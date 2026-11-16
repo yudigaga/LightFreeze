@@ -1,0 +1,60 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+
+def releaseSigning = new Properties()
+def signingFile = rootProject.file('signing.properties')
+if (signingFile.exists()) signingFile.withInputStream { releaseSigning.load(it) }
+
+android {
+    namespace 'io.github.yudigaga.lightfreeze'
+    compileSdk 37
+    defaultConfig {
+        applicationId 'io.github.yudigaga.lightfreeze'
+        minSdk 33
+        targetSdk 36
+        versionCode 16
+        versionName '0.8.1'
+    }
+    signingConfigs {
+        release {
+            if (!releaseSigning.isEmpty()) {
+                storeFile rootProject.file(releaseSigning['storeFile'])
+                storePassword releaseSigning['storePassword']
+                keyAlias releaseSigning['keyAlias']
+                keyPassword releaseSigning['keyPassword']
+                enableV1Signing false
+                enableV2Signing true
+                enableV3Signing true
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildFeatures { buildConfig true; compose true }
+    lint { abortOnError true; checkReleaseBuilds true }
+}
+
+dependencies {
+    implementation 'top.yukonga.miuix.kmp:miuix-ui-android:0.9.4'
+    implementation 'androidx.activity:activity-compose:1.13.0'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    compileOnly 'io.github.libxposed:api:102.0.0'
+    implementation 'dev.rikka.shizuku:api:13.1.5'
+    implementation 'dev.rikka.shizuku:provider:13.1.5'
+    implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:6.1'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'io.github.libxposed:api:102.0.0'
+    testImplementation 'org.json:json:20240303'
+}

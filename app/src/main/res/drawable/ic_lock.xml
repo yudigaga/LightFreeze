@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original geometric icon authored for LightFreeze. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="@android:color/black">
+    <path android:fillColor="#00000000" android:strokeColor="#FF000000"
+        android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M7,10 V7 C7,1 17,1 17,7 V10 M5,10 H19 V21 H5 Z M12,14 V17" />
+</vector>

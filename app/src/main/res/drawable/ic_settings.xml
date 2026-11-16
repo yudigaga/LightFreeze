@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original geometric icon authored for LightFreeze. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="@android:color/black">
+    <path android:fillColor="#00000000" android:strokeColor="#FF000000"
+        android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M18.56,9.28 L20.79,10.05 L20.79,13.95 L18.56,14.72 L18.56,14.72 L19.59,16.84 L16.84,19.59 L14.72,18.56 L14.72,18.56 L13.95,20.79 L10.05,20.79 L9.28,18.56 L9.28,18.56 L7.16,19.59 L4.41,16.84 L5.44,14.72 L5.44,14.72 L3.21,13.95 L3.21,10.05 L5.44,9.28 L5.44,9.28 L4.41,7.16 L7.16,4.41 L9.28,5.44 L9.28,5.44 L10.05,3.21 L13.95,3.21 L14.72,5.44 L14.72,5.44 L16.84,4.41 L19.59,7.16 L18.56,9.28 Z M15.2,12 A3.2,3.2 0,1 1,8.8 12 A3.2,3.2 0,1 1,15.2 12" />
+</vector>

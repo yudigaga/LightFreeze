@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="lf_background">#F7F9FF</color>
+    <color name="lf_surface">#F7F9FF</color>
+    <color name="lf_foreground">#191C20</color>
+    <color name="lf_muted">#42474E</color>
+    <color name="lf_primary">#32628D</color>
+    <color name="lf_on_primary">#FFFFFF</color>
+    <color name="lf_secondary">#ECEEF4</color>
+    <color name="lf_outline">#C2C7CF</color>
+    <color name="lf_error">#BA1A1A</color>
+    <color name="lf_primary_container">#CFE5FF</color>
+    <color name="lf_on_primary_container">#001D34</color>
+    <color name="lf_secondary_container">#D6E4F7</color>
+    <color name="lf_on_secondary_container">#0F1D2A</color>
+    <color name="lf_secondary_color">#526070</color>
+    <color name="lf_on_secondary">#FFFFFF</color>
+    <color name="lf_tertiary">#695779</color>
+    <color name="lf_on_tertiary">#FFFFFF</color>
+    <color name="lf_tertiary_container">#F0DBFF</color>
+    <color name="lf_on_tertiary_container">#241532</color>
+    <color name="lf_surface_variant">#DEE3EB</color>
+    <color name="lf_outline_strong">#73777F</color>
+    <color name="lf_surface_container">#ECEEF4</color>
+    <color name="lf_surface_container_low">#F2F3F9</color>
+    <color name="lf_surface_container_high">#E6E8EE</color>
+    <color name="lf_on_error">#FFFFFF</color>
+    <color name="lf_error_container">#FFDAD6</color>
+    <color name="lf_on_error_container">#410002</color>
+</resources>

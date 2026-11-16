@@ -1,0 +1,4 @@
+-dontwarn io.github.libxposed.annotation.**
+-keep class io.github.yudigaga.lightfreeze.system.** { *; }
+-keep class io.github.yudigaga.lightfreeze.ui.** extends android.app.Activity { *; }
+-adaptresourcefilecontents META-INF/xposed/java_init.list

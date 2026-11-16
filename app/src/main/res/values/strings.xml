@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">轻冻</string>
+    <string name="module_description">按需冻结与恢复应用。通过 Root 或 Shizuku 手动操作；系统增强提供事件驱动的自动回冻。</string>
+    <string name="app_count">%1$d 个应用 · 长按选择批量操作</string>
+    <string name="selected_state">已选择 · %1$s</string>
+</resources>
