@@ -1,0 +1,18 @@
+.gradle/
+**/build/
+local.properties
+signing.properties
+.signing/
+.superpowers/
+.scratch/
+analysis/
+*.apk
+artifacts/
+*.hprof
+
+# Keep credentials and signing material out of shared source.
+.env
+.env.*
+*.jks
+*.keystore
+*.pem
