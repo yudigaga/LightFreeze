@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import io.github.yudigaga.lightfreeze.BuildConfig
 import io.github.yudigaga.lightfreeze.R
 import io.github.yudigaga.lightfreeze.control.AppEntry
+import io.github.yudigaga.lightfreeze.tags.AppTabs
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -133,6 +134,11 @@ class MiuixMain(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(state.filter, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, style = MiuixTheme.textStyles.footnote1, modifier = Modifier.weight(1f))
+                if (state.home && !AppTabs.isBuiltin(state.tabId)) {
+                    IconButton(onClick = { tags.refreshTag(state.tabId) }, enabled = enabled) {
+                        MiuixUi.ResourceIcon(R.drawable.ic_refresh, "刷新当前标签")
+                    }
+                }
                 if (state.home) IconButton(onClick = { host.uiTabActions(state.tabId) }, enabled = enabled) {
                     MiuixUi.ResourceIcon(R.drawable.ic_folder, "当前标签操作")
                 }

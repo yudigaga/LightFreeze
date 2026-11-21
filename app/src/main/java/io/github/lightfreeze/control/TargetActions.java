@@ -59,52 +59,59 @@ public final class TargetActions {
             for (AppEntry app : installed) catalog.put(app.packageName, app);
             FreezerController controller = new FreezerController(context, settings);
             StringBuilder report = new StringBuilder();
-            int successes = 0;
+            int successes = 0, notInstalled = 0;
             List<AppEntry> work = new ArrayList<>();
             for (String pkg : targets) if (catalog.containsKey(pkg)) work.add(catalog.get(pkg));
             List<OperationResult> results = controller.changeAll(work, freeze, true);
             Map<String, OperationResult> outcomes = new HashMap<>();
             for (int i = 0; i < work.size(); i++) outcomes.put(work.get(i).packageName, results.get(i));
+            List<Integer> finalSettings = new ArrayList<>();
             // Freeze the member set before writes; state changes and tag edits cannot expand this request.
             for (String pkg : targets) {
                 AppEntry app = catalog.get(pkg);
                 OperationResult result = app == null
-                        ? new OperationResult(false, "当前用户未安装此应用")
+                        ? new OperationResult(false, "未确认应用的安装或启用状态")
                         : outcomes.get(pkg);
+                try {
+                    if (freeze) finalSettings.add(readFinalSetting(pkg, app));
+                    else if (!result.success) readFinalSetting(pkg, app);
+                } catch (PackageManager.NameNotFoundException e) {
+                    notInstalled++;
+                    report.append(app == null ? pkg : app.label).append("：当前用户未安装，已跳过\n");
+                    continue;
+                }
                 if (result.success) successes++;
                 else Log.w("LightFreeze", operation + " " + pkg + ": " + result.message);
                 report.append(app == null ? pkg : app.label).append(result.success ? "：成功 · " : "：失败 · ")
                         .append(result.message).append('\n');
             }
-            BatchStatus finalState = null;
-            if (freeze) {
-                List<Integer> finalSettings = new ArrayList<>(targets.size());
-                for (String pkg : targets) finalSettings.add(readFinalSetting(catalog.get(pkg)));
-                finalState = BatchStatus.fromEnabledSettings(finalSettings);
-            }
+            BatchStatus finalState = freeze ? BatchStatus.fromEnabledSettings(finalSettings, notInstalled) : null;
+            int processed = targets.size() - notInstalled;
             Log.i("LightFreeze", "batch " + operation + " count=" + targets.size() + " success=" + successes
+                    + " skippedUninstalled=" + notInstalled
                     + (finalState == null ? "" : " frozen=" + finalState.frozen + " notFrozen="
                             + finalState.notFrozen + " unconfirmed=" + finalState.unconfirmed)
                     + " elapsedMs=" + (SystemClock.elapsedRealtime() - started));
-            return new OperationResult(successes == targets.size()
-                    && (finalState == null || finalState.frozen == targets.size()),
+            return new OperationResult(processed > 0 && successes == processed
+                    && (finalState == null || finalState.frozen == processed),
                     (finalState == null ? "" : "最终状态：" + finalState.freezeSummary() + "\n")
-                            + "处理 " + targets.size() + " 项，成功 " + successes + " 项，失败 "
-                            + (targets.size() - successes) + " 项\n" + report, finalState);
+                            + "处理 " + processed + " 项，成功 " + successes + " 项，失败 "
+                            + (processed - successes) + " 项"
+                            + (notInstalled == 0 ? "" : "，跳过 " + notInstalled + " 个未安装应用")
+                            + "\n" + report, finalState);
         } catch (Exception e) {
             return new OperationResult(false, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
         }
     }
 
-    private Integer readFinalSetting(AppEntry app) {
-        if (app == null) return null;
+    private Integer readFinalSetting(String pkg, AppEntry app) throws PackageManager.NameNotFoundException {
         try {
             PackageManager pm = context.getPackageManager();
-            ApplicationInfo info = pm.getApplicationInfo(app.packageName,
+            ApplicationInfo info = pm.getApplicationInfo(pkg,
                     PackageManager.ApplicationInfoFlags.of(PackageManager.MATCH_DISABLED_COMPONENTS));
-            if (info.uid != app.uid || info.uid / 100000 != app.userId) return null;
-            return pm.getApplicationEnabledSetting(app.packageName);
-        } catch (PackageManager.NameNotFoundException | RuntimeException e) {
+            if (app == null || info.uid != app.uid || info.uid / 100000 != app.userId) return null;
+            return pm.getApplicationEnabledSetting(pkg);
+        } catch (RuntimeException e) {
             return null;
         }
     }

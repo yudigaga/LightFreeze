@@ -17,7 +17,7 @@ New-Item -ItemType Directory -Path $taskArchive -Force | Out-Null
 $taskBadging = & $taskAapt dump badging $taskApk 2>&1
 if ($LASTEXITCODE -ne 0) { throw 'APK metadata verification failed' }
 $taskBadgingText = $taskBadging -join "`n"
-if ($taskBadgingText -notmatch "package: name='io.github.yudigaga.lightfreeze' versionCode='16' versionName='0.8.1'") { throw 'Unexpected application ID or version' }
+if ($taskBadgingText -notmatch "package: name='io.github.yudigaga.lightfreeze' versionCode='18' versionName='0.8.3'") { throw 'Unexpected application ID or version' }
 if ($taskBadgingText -match 'application-debuggable|testOnly') { throw 'Debug or test APK cannot be archived as Release' }
 if ($taskBadgingText -notmatch "sdkVersion:'33'" -or $taskBadgingText -notmatch "targetSdkVersion:'36'") { throw 'Unexpected SDK contract' }
 $taskManifest = & $taskAapt dump xmltree $taskApk AndroidManifest.xml 2>&1
@@ -71,18 +71,18 @@ $taskLintErrors = @($taskLint.issues.issue | Where-Object {$_.severity -in @('Er
 $taskLintWarnings = @($taskLint.issues.issue | Where-Object {$_.severity -eq 'Warning'}).Count
 if ($taskLintErrors -ne 0) { throw 'Release lint has errors' }
 
-$taskFile = Join-Path $taskArchive 'LightFreeze-0.8.1-release.apk'
+$taskFile = Join-Path $taskArchive 'LightFreeze-0.8.3-release.apk'
 Copy-Item -LiteralPath $taskApk -Destination $taskFile -Force
 $taskHash = (Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash
 $taskMapping = Join-Path $taskRoot 'app\build\outputs\mapping\release\mapping.txt'
 if (!(Test-Path -LiteralPath $taskMapping)) { throw 'R8 Release mapping missing' }
 $taskMappingText = Get-Content -LiteralPath $taskMapping -Raw
 if ($taskMappingText -notmatch '# compiler: R8') { throw 'Unexpected Release compiler mapping' }
-$taskMappingArchive = Join-Path $taskArchive 'LightFreeze-0.8.1-mapping.txt'
+$taskMappingArchive = Join-Path $taskArchive 'LightFreeze-0.8.3-mapping.txt'
 Copy-Item -LiteralPath $taskMapping -Destination $taskMappingArchive -Force
 $taskMappingHash = (Get-FileHash -LiteralPath $taskMappingArchive -Algorithm SHA256).Hash
 $taskEvidence = [ordered]@{
-    packageName = 'io.github.yudigaga.lightfreeze'; versionName = '0.8.1'; versionCode = 16
+    packageName = 'io.github.yudigaga.lightfreeze'; versionName = '0.8.3'; versionCode = 18
     apk = $taskFile; bytes = (Get-Item -LiteralPath $taskFile).Length; sha256 = $taskHash
     certificateSha256 = $taskCert; signatureV2 = $true; signatureV3 = $true; alignment16KiB = $true
     r8 = $true; mapping = $taskMappingArchive; mappingSha256 = $taskMappingHash
@@ -91,8 +91,8 @@ $taskEvidence = [ordered]@{
     lint = @{errors=$taskLintErrors; warnings=$taskLintWarnings}
     limitations = @('Owner-rule upgrade, transactional management removal and new member-selection UI not physical-device verified', 'High-risk theme/system-UID PM writes and ROM restrictions not device-verified', 'No physical-device acceptance for frozen-body URL resolver/launch hooks or card-removal hooks', 'Root/Shizuku cold-start service authorization and PM writes not device-verified', 'No post-change device latency measurements; Toast, native/launcher/multi-trigger/ROM behavior not device-verified', 'Disabled-module cold-boot reinjection and external recovery not device-verified; frozen URL supports only compatible no-result ACTION_VIEW launchers')
 }
-$taskEvidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskArchive 'LightFreeze-0.8.1-release.json') -Encoding utf8NoBOM
-"$taskHash  LightFreeze-0.8.1-release.apk" | Set-Content -LiteralPath (Join-Path $taskArchive 'SHA256SUMS.txt') -Encoding utf8NoBOM
+$taskEvidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskArchive 'LightFreeze-0.8.3-release.json') -Encoding utf8NoBOM
+"$taskHash  LightFreeze-0.8.3-release.apk" | Set-Content -LiteralPath (Join-Path $taskArchive 'SHA256SUMS.txt') -Encoding utf8NoBOM
 $taskBadgingText | Set-Content -LiteralPath (Join-Path $taskArchive 'release-badging.txt') -Encoding utf8NoBOM
 $taskSignatureText | Set-Content -LiteralPath (Join-Path $taskArchive 'release-signature.txt') -Encoding utf8NoBOM
 $taskSignatureV2 | Set-Content -LiteralPath (Join-Path $taskArchive 'release-signature-v2.txt') -Encoding utf8NoBOM

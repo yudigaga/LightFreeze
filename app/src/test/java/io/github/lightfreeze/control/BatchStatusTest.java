@@ -41,6 +41,20 @@ public class BatchStatusTest {
         assertEquals("没有可操作的应用", BatchStatus.fromEnabledSettings(List.of()).freezeSummary());
     }
 
+    @Test public void uninstalledMembersAreSkippedWithoutChangingUnknownCount() {
+        BatchStatus status = BatchStatus.fromEnabledSettings(Arrays.asList(3, 0, null), 2);
+        assertEquals(1, status.unconfirmed);
+        assertEquals("已冻结 1 个，未冻结 1 个，1 个状态未确认，已跳过 2 个未安装应用",
+                status.freezeSummary());
+    }
+
+    @Test public void uninstalledMembersDoNotHideConfirmedFrozenOrEmptyResults() {
+        assertEquals("已冻结，已跳过 1 个未安装应用",
+                BatchStatus.fromEnabledSettings(List.of(3), 1).freezeSummary());
+        assertEquals("没有可操作的应用，已跳过 2 个未安装应用",
+                BatchStatus.fromEnabledSettings(List.of(), 2).freezeSummary());
+    }
+
     @Test public void mixedFrozenCountDoesNotDependOnOperationSuccessFlag() {
         OperationResult result = new OperationResult(true, "写入成功后状态已被其他工具改变",
                 BatchStatus.fromEnabledSettings(List.of(3, 1)));

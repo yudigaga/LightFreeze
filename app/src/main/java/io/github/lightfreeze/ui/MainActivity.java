@@ -1,9 +1,12 @@
 package io.github.yudigaga.lightfreeze.ui;
 
 import androidx.appcompat.app.AppCompatActivity;
+import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ShortcutInfo;
@@ -31,6 +34,7 @@ import io.github.yudigaga.lightfreeze.tags.AppTabs;
 import io.github.yudigaga.lightfreeze.tags.Tag;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -47,6 +51,7 @@ public final class MainActivity extends AppCompatActivity {
     private int destination = HOME;
     private String homeQuery = "", appsQuery = "", query = "";
     private boolean searchVisible, busy, settingsPage, tagsPage;
+    private boolean observingPackages, catalogRefreshPending;
     private boolean mainClaimConfirmed, needsKeepConfirmation;
     private long mainClaimGeneration;
     private boolean thirdParty = true, official = true, frozenOnly, unfrozenOnly;
@@ -71,6 +76,15 @@ public final class MainActivity extends AppCompatActivity {
     private HighRiskUi highRiskUi;
     private MiuixBridge bridge;
     private MiuixMain presentation;
+    private final BroadcastReceiver packageObserver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (!Intent.ACTION_PACKAGE_ADDED.equals(action) && (!Intent.ACTION_PACKAGE_REMOVED.equals(action)
+                    || intent.getBooleanExtra(Intent.EXTRA_REPLACING, false))) return;
+            catalogRefreshPending = true;
+            refreshCatalogIfPending();
+        }
+    };
     private final OnBackInvokedCallback backCallback = this::navigateBack;
     private final Shizuku.OnRequestPermissionResultListener permissionListener = (requestCode, grantResult) -> {
         if (requestCode == 4711 && !isDestroyed() && "shizuku".equals(settings.getBackend())) {
@@ -123,9 +137,25 @@ public final class MainActivity extends AppCompatActivity {
         if (tagsPage) tagUi.show(); else renderDestination();
     }
 
+    @Override protected void onStart() {
+        super.onStart();
+        IntentFilter packages = new IntentFilter(Intent.ACTION_PACKAGE_ADDED);
+        packages.addAction(Intent.ACTION_PACKAGE_REMOVED);
+        packages.addDataScheme("package");
+        registerReceiver(packageObserver, packages, Context.RECEIVER_NOT_EXPORTED);
+        observingPackages = true;
+    }
+
     @Override protected void onResume() {
         super.onResume();
-        if (!busy) refresh();
+        if (busy) catalogRefreshPending = true;
+        else refresh();
+    }
+
+    @Override protected void onStop() {
+        observingPackages = false;
+        unregisterReceiver(packageObserver);
+        super.onStop();
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
@@ -294,6 +324,28 @@ public final class MainActivity extends AppCompatActivity {
         if (tagUi != null) tagUi.onActivityResult(requestCode, resultCode, data);
     }
 
+    private void refreshCatalogIfPending() {
+        if (!catalogRefreshPending || !observingPackages || busy || isFinishing() || isDestroyed()) return;
+        catalogRefreshPending = false;
+        // Package events refresh the catalog without replacing the previous operation result.
+        runTask(null, () -> {
+            List<AppEntry> loaded = repository.load(true);
+            Restrictions restrictions = readRestrictions(loaded);
+            return () -> {
+                replaceCatalog(loaded, restrictions);
+                if (catalogVisible()) applyFilter();
+                else if (settingsPage) showSettings();
+            };
+        }, true);
+    }
+
+    private void replaceCatalog(List<AppEntry> loaded, Restrictions restrictions) {
+        entries.clear(); entries.addAll(loaded);
+        applyRestrictions(restrictions);
+        selected.retainAll(packageNames(entries));
+        tagUi.updateCatalog(List.copyOf(entries));
+    }
+
     private void refresh() {
         refresh(false);
     }
@@ -303,6 +355,8 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void refresh(boolean requestRootCheck, String completionMessage, boolean completionFailure) {
+        if (busy || isDestroyed()) return;
+        catalogRefreshPending = false;
         runTask("正在读取权限和系统状态…", () -> {
             synchronized (SettingsStore.class) {
                 if (!mainClaimConfirmed && !SelfFreezePreparation.current(mainClaimGeneration)) {
@@ -332,9 +386,7 @@ public final class MainActivity extends AppCompatActivity {
             final Bundle actualStatus = actual;
             final String keepProblem = claimProblem;
             return () -> {
-                entries.clear(); entries.addAll(loaded);
-                applyRestrictions(restrictions);
-                selected.retainAll(packageNames(loaded));
+                replaceCatalog(loaded, restrictions);
                 if (backend != null) backendStatus = (root ? "上次检查：" : "") + backend.message;
                 systemStatus = actualStatus;
                 if (tagsPage) tagUi.show();
@@ -520,8 +572,7 @@ public final class MainActivity extends AppCompatActivity {
             List<AppEntry> loaded = repository.load(true);
             Restrictions restrictions = readRestrictions(loaded);
             return () -> {
-                entries.clear(); entries.addAll(loaded);
-                applyRestrictions(restrictions);
+                replaceCatalog(loaded, restrictions);
                 if (catalogVisible()) { applyFilter(); updateBatchBar(); }
                 notifyMessage(result.message, !result.success);
             };
@@ -554,6 +605,8 @@ public final class MainActivity extends AppCompatActivity {
         entries.addAll(updated.values());
         externallyRestricted.removeAll(touched); externallyRestricted.addAll(restrictions.restricted);
         unknownStates.removeAll(touched); unknownStates.addAll(restrictions.unknown);
+        selected.retainAll(packageNames(entries));
+        tagUi.updateCatalog(List.copyOf(entries));
         if (catalogVisible()) { applyFilter(); updateBatchBar(); }
     }
 
@@ -563,19 +616,24 @@ public final class MainActivity extends AppCompatActivity {
         if (!allowPreparation && (!mainClaimConfirmed || SelfFreezePreparation.blocked())) {
             notifyMessage("请先刷新并确认本体解冻状态，再继续操作。", true); return;
         }
-        busy = true; bridge.setBusy(true); notifyMessage(working, false);
+        busy = true; bridge.setBusy(true);
+        if (working != null) notifyMessage(working, false);
         worker.execute(() -> {
             try {
                 Runnable completed = work.run();
                 runOnUiThread(() -> {
                     if (isDestroyed()) return;
-                    busy = false; bridge.setBusy(false); bridge.setMessage(""); completed.run();
+                    busy = false; bridge.setBusy(false);
+                    if (working != null) bridge.setMessage("");
+                    try { completed.run(); }
+                    finally { refreshCatalogIfPending(); }
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     if (isDestroyed()) return;
                     busy = false; bridge.setBusy(false); notifyMessage("操作未完成：" + error(e), true);
                     if (!tagsPage) renderDestination();
+                    refreshCatalogIfPending();
                 });
             }
         });
@@ -605,13 +663,17 @@ public final class MainActivity extends AppCompatActivity {
     private Restrictions readRestrictions(List<AppEntry> items) {
         Restrictions result = new Restrictions();
         PackageManager pm = getPackageManager();
-        for (AppEntry app : items) {
+        Iterator<AppEntry> iterator = items.iterator();
+        while (iterator.hasNext()) {
+            AppEntry app = iterator.next();
             try {
                 ApplicationInfo info = pm.getApplicationInfo(app.packageName,
                         PackageManager.ApplicationInfoFlags.of(PackageManager.MATCH_DISABLED_COMPONENTS));
                 if ((!app.frozen && !info.enabled) || (info.flags & ApplicationInfo.FLAG_SUSPENDED) != 0)
                     result.restricted.add(app.packageName);
-            } catch (PackageManager.NameNotFoundException | RuntimeException e) {
+            } catch (PackageManager.NameNotFoundException e) {
+                iterator.remove();
+            } catch (RuntimeException e) {
                 result.unknown.add(app.packageName);
             }
         }

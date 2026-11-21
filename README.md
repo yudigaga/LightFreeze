@@ -16,7 +16,7 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 版本 | 0.8.1 / versionCode 16 |
+| 版本 | 0.8.3 / versionCode 18 |
 | 应用 ID | `io.github.yudigaga.lightfreeze` |
 | Android | 13+，target SDK 36 |
 | 系统增强 | libxposed API 102，作用域 `system` |

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
+import android.os.Build;
 import android.os.Process;
 import java.text.Collator;
 import java.util.ArrayList;
@@ -49,6 +50,19 @@ public final class AppRepository {
         }
         return entries;
     }
+
+    /** Check installation independently of catalog visibility and the app's enabled state. */
+    public boolean isUninstalled(String pkg) {
+        try {
+            ApplicationInfo info = pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(
+                    PackageManager.MATCH_UNINSTALLED_PACKAGES | PackageManager.MATCH_DISABLED_COMPONENTS));
+            if ((info.flags & ApplicationInfo.FLAG_INSTALLED) != 0) return false;
+        } catch (PackageManager.NameNotFoundException ignored) {
+            // Android can keep an archived app even when regular app information is unavailable.
+        }
+        return Build.VERSION.SDK_INT < 35 || pm.getArchivedPackage(pkg) == null;
+    }
+
     public Drawable icon(AppEntry entry) {
         try { return pm.getApplicationIcon(entry.packageName); }
         catch (PackageManager.NameNotFoundException e) { return pm.getDefaultActivityIcon(); }

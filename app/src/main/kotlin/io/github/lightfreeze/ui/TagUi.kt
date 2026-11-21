@@ -71,6 +71,17 @@ class TagUi(private val host: MainActivity, private val settings: SettingsStore)
         }
     }
     private val bridge get() = host.miuix()
+    private var installedCatalog by mutableStateOf<List<AppEntry>?>(null)
+    private val installedPackages by derivedStateOf { installedCatalog?.mapTo(hashSetOf()) { it.packageName } }
+
+    fun updateCatalog(installed: List<AppEntry>) { installedCatalog = installed }
+
+    private fun membershipSummary(tag: Tag): String {
+        val packages = installedPackages ?: return "${tag.packages.size} 个成员"
+        val installed = tag.packages.count(packages::contains)
+        val missing = tag.packages.size - installed
+        return if (missing == 0) "$installed 个应用" else "已安装 $installed 个 · 未安装 $missing 个"
+    }
 
     fun restore(id: String?) { currentId = id }
     fun detailId(): String? = currentId
@@ -81,6 +92,39 @@ class TagUi(private val host: MainActivity, private val settings: SettingsStore)
         if (host.tagBusy()) return
         val tag = find(id) ?: return host.tagMessage("标签已删除，请重新选择。", true)
         currentId = id; loadMembers(tag, true)
+    }
+    fun refreshTag(id: String) {
+        work("正在核对标签成员的安装状态…") {
+            val tag = find(id) ?: throw IllegalArgumentException("标签已删除，请重新选择。")
+            val repository = AppRepository(host)
+            val uninstalled = mutableSetOf<String>()
+            var unknown = 0
+            for (pkg in tag.packages) {
+                try {
+                    if (repository.isUninstalled(pkg)) uninstalled.add(pkg)
+                } catch (_: RuntimeException) {
+                    unknown++
+                }
+            }
+            val removed = synchronized(SettingsStore::class.java) {
+                val tags = settings.tags
+                val current = tags.firstOrNull { it.id == id }
+                    ?: throw IllegalArgumentException("标签已删除，请重新选择。")
+                val remaining = current.packages - uninstalled
+                if (remaining.size != current.packages.size) {
+                    settings.tags = tags.map {
+                        if (it.id == id) Tag(it.id, it.name, it.mode, remaining) else it
+                    }
+                }
+                current.packages.size - remaining.size
+            }
+            val sync = if (removed > 0) host.tagSyncConfig() else null
+            val summary = if (removed == 0) "已刷新标签，没有可移除的未安装成员。"
+                else "已从「${tag.name}」移除 $removed 个未安装应用。"
+            val unknownNote = if (unknown == 0) "" else "\n$unknown 个应用的安装状态未确认，已保留。"
+            val syncNote = if (sync?.success == false) "\n本地已保存，系统同步未完成：${sync.message}" else ""
+            Runnable { host.tagRefresh(summary + unknownNote + syncNote, unknown > 0 || sync?.success == false) }
+        }
     }
     fun assignmentAction(packages: Set<String>): String = try {
         if (settings.tags.any { it.packages.any(packages::contains) }) "移动到标签" else "加入标签"
@@ -112,7 +156,7 @@ class TagUi(private val host: MainActivity, private val settings: SettingsStore)
             bridge.dialog("选择目标标签 · ${chosen.size} 个应用") {
                 Column {
                     choices.forEach { tag ->
-                        BasicComponent(title = tag.name, summary = "${tag.packages.size} 个应用", onClick = {
+                        BasicComponent(title = tag.name, summary = membershipSummary(tag), onClick = {
                             if (!host.tagBusy()) assignToTag(chosen, tag.id, null)
                         })
                     }
@@ -290,7 +334,7 @@ class TagUi(private val host: MainActivity, private val settings: SettingsStore)
             Section("我的标签 · ${tags.size}")
             if (tags.isEmpty()) Description("还没有自定义标签。新建后可直接添加应用，再选择锁屏或划卡回冻。")
             else Card(Modifier.fillMaxWidth()) { tags.forEach { tag ->
-                BasicComponent(title = tag.name, summary = "${tag.packages.size} 个应用 · ${modeName(tag.mode)}",
+                BasicComponent(title = tag.name, summary = "${membershipSummary(tag)} · ${modeName(tag.mode)}",
                     startAction = { ResourceIcon(R.drawable.ic_folder) },
                     endActions = { ResourceIcon(R.drawable.ic_chevron_right) },
                     onClick = { if (!host.tagBusy()) openTag(tag.id) })
@@ -307,8 +351,15 @@ class TagUi(private val host: MainActivity, private val settings: SettingsStore)
     }
     private fun showDetail(tag: Tag) {
         page(tag.name, "tag:${tag.id}") {
-            Description("${tag.packages.size} 个应用")
+            Description(membershipSummary(tag))
             Card(Modifier.fillMaxWidth()) {
+                BasicComponent(
+                    title = "刷新标签",
+                    summary = "从此标签移除未安装应用",
+                    startAction = { ResourceIcon(R.drawable.ic_refresh) },
+                    onClick = { refreshTag(tag.id) },
+                    enabled = !LocalUiBusy.current,
+                )
                 NavigationAction("改名", R.drawable.ic_edit) { editName(tag) }
                 NavigationAction("添加应用到此标签", R.drawable.ic_add) { loadMembers(tag, true) }
                 NavigationAction("编辑成员（仅分类）", R.drawable.ic_apps) { loadMembers(tag, false) }
@@ -422,25 +473,42 @@ class TagUi(private val host: MainActivity, private val settings: SettingsStore)
     private data class Member(val pkg: String, val label: String, val missing: Boolean, val origin: String)
     private fun showMembers(tag: Tag, installed: List<AppEntry>, adding: Boolean) {
         editingMembers = true
+        updateCatalog(installed)
         val origins = linkedMapOf<String, String>()
         settings.tags.forEach { existing -> existing.packages.forEach { origins[it] = if (existing.id == tag.id) "当前标签" else "来自「${existing.name}」，选中后移入" } }
-        val managed = settings.allManagedPackages; val seen = hashSetOf<String>()
-        val members = installed.filter { it.packageName != "android" && (!adding || it.packageName !in tag.packages) }.mapTo(mutableListOf()) {
-            seen.add(it.packageName)
-            Member(it.packageName, it.label, false, origins[it.packageName] ?: if (it.packageName in managed) "未分组受管应用" else "尚未纳入管理")
-        }
-        if (!adding) tag.packages.filter { seen.add(it) }.forEach { members.add(Member(it, it, true, "当前标签")) }
-        members.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
+        val managed = settings.allManagedPackages
         val selection = if (adding) MemberSelection.adding(tag.packages) else MemberSelection.editing(tag.packages)
         val title = tag.name + if (adding) " · 添加应用" else " · 编辑成员"
         bridge.page(title, true, host.tagEnterPage(title)) { padding ->
             key(tag.id, adding) {
                 var query by remember { mutableStateOf("") }
                 var chosen by remember { mutableStateOf<Set<String>>(selection.selected()) }
-                val shown = remember(query) { val needle = query.trim().lowercase(Locale.ROOT); members.filter { it.label.lowercase(Locale.ROOT).contains(needle) || it.pkg.lowercase(Locale.ROOT).contains(needle) } }
+                val snapshot = installedCatalog.orEmpty()
+                val members = remember(snapshot) {
+                    val seen = hashSetOf<String>()
+                    val rows = snapshot.filter { it.packageName != "android" && (!adding || it.packageName !in tag.packages) }.mapTo(mutableListOf()) {
+                        seen.add(it.packageName)
+                        Member(it.packageName, it.label, false, origins[it.packageName] ?: if (it.packageName in managed) "未分组受管应用" else "尚未纳入管理")
+                    }
+                    if (!adding) tag.packages.filter { seen.add(it) }.forEach { rows.add(Member(it, it, true, "当前标签")) }
+                    rows.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
+                }
+                val eligible = remember(members) { members.mapTo(hashSetOf()) { it.pkg } }
+                val eligibleChosen = chosen.intersect(eligible)
+                LaunchedEffect(eligible) {
+                    val retained = chosen.intersect(eligible)
+                    if (retained != chosen) {
+                        selection.selectCurrentResults(retained)
+                        chosen = selection.selected()
+                    }
+                }
+                val shown = remember(query, members) {
+                    val needle = query.trim().lowercase(Locale.ROOT)
+                    members.filter { it.label.lowercase(Locale.ROOT).contains(needle) || it.pkg.lowercase(Locale.ROOT).contains(needle) }
+                }
                 Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
                     SearchField(query, { query = it })
-                    Description("已选 ${chosen.size} 个 · 当前显示 ${shown.size} 个")
+                    Description("已选 ${eligibleChosen.size} 个 · 当前显示 ${shown.size} 个")
                     LazyColumn(
                         Modifier.weight(1f).fillMaxWidth(),
                         contentPadding = PaddingValues(vertical = 12.dp),
@@ -461,7 +529,10 @@ class TagUi(private val host: MainActivity, private val settings: SettingsStore)
                         if (shown.isEmpty()) item("empty-results") { Description("没有匹配的应用") }
                         items(shown, key = { it.pkg }) { member ->
                             BasicComponent(title = member.label, summary = (if (member.missing) "未安装 · " else "") + member.pkg + "\n" + member.origin,
-                                startAction = { AppIcon(host, member.pkg) },
+                                startAction = {
+                                    if (member.missing) ResourceIcon(R.drawable.ic_apps, size = 40.dp)
+                                    else AppIcon(host, member.pkg)
+                                },
                                 endActions = { Checkbox(if (member.pkg in chosen) ToggleableState.On else ToggleableState.Off, null) },
                                 onClick = {
                                     if (!host.tagBusy()) { selection.setChecked(member.pkg, member.pkg !in chosen); chosen = selection.selected() }
@@ -471,13 +542,16 @@ class TagUi(private val host: MainActivity, private val settings: SettingsStore)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Action("取消", { if (!host.tagBusy()) { editingMembers = false; show() } }, modifier = Modifier.weight(1f))
                         if (adding) {
-                            Action("仅添加", { if (!host.tagBusy()) addSelectedMembers(tag.id, chosen, false) }, modifier = Modifier.weight(1f))
-                            Action("添加并冻结", { if (!host.tagBusy()) addSelectedMembers(tag.id, chosen, true) }, primary = true, modifier = Modifier.weight(1f))
+                            Action("仅添加", { if (!host.tagBusy()) addSelectedMembers(tag.id, eligibleChosen, false) }, modifier = Modifier.weight(1f))
+                            Action("添加并冻结", { if (!host.tagBusy()) addSelectedMembers(tag.id, eligibleChosen, true) }, primary = true, modifier = Modifier.weight(1f))
                         } else Action("保存成员", {
                             if (!host.tagBusy()) {
                                 val current = find(tag.id)
                                 if (current == null) { editingMembers = false; currentId = null; show() }
-                                else try { saveTag(Tag(current.id, current.name, current.mode, selection.membersAfter(current.packages)), "已保存 ${selection.size()} 个成员的分类。") }
+                                else try {
+                                    selection.selectCurrentResults(eligibleChosen)
+                                    saveTag(Tag(current.id, current.name, current.mode, selection.membersAfter(current.packages)), "已保存 ${selection.size()} 个成员的分类。")
+                                }
                                 catch (e: IllegalArgumentException) { host.tagMessage(error(e), true) }
                             }
                         }, primary = true, modifier = Modifier.weight(1f))
@@ -521,7 +595,7 @@ class TagUi(private val host: MainActivity, private val settings: SettingsStore)
         return OperationResult(success == packages.size, "仅处理 ${packages.size} 个所选新增项：冻结成功 $success 个，失败 ${packages.size - success} 个。\n$detail")
     }
     private fun confirmAction(tag: Tag, freeze: Boolean) {
-        confirm((if (freeze) "冻结“" else "解冻“") + tag.name + "”？", "${tag.packages.size} 个成员。" + if (freeze) "冻结可能中断播放、通话、下载等任务。" else "解冻并按所属标签规则回冻，不启动应用。", "执行") {
+        confirm((if (freeze) "冻结“" else "解冻“") + tag.name + "”？", membershipSummary(tag) + "。" + if (freeze) "冻结可能中断播放、通话、下载等任务。" else "解冻并按所属标签规则回冻，不启动应用。", "执行") {
             work("正在处理标签内应用…") {
                 val result = targets.execute(if (freeze) "freeze" else "unfreeze", "tag", tag.id)
                 Runnable { alert("标签操作结果", result.message); host.tagRefresh() }
